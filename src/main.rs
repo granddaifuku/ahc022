@@ -1,9 +1,13 @@
 use proconio::{derive_readable, input, source::line::LineSource};
+use std::cmp;
+use std::collections::HashMap;
 use std::io::{stdin, BufReader, Stdin};
+
+const MAX_TEMPERATURE: i32 = 1000;
 
 #[derive_readable]
 #[derive(Debug)]
-struct ExitCell {
+struct Cell {
     x: usize,
     y: usize,
 }
@@ -13,7 +17,7 @@ struct Input {
     L: usize,
     N: usize,
     S: usize,
-    exit_cells: Vec<ExitCell>,
+    exit_cells: Vec<Cell>,
 }
 
 impl Input {
@@ -24,7 +28,7 @@ impl Input {
             L: usize,
             N: usize,
             S: usize,
-            exit_cells: [ExitCell; N],
+            exit_cells: [Cell; N],
         }
 
         Input {
@@ -40,19 +44,36 @@ struct Solver {
     input: Input,
     temperature: Vec<Vec<i32>>,
     estimate: Vec<usize>,
+    temperature_to_cell: HashMap<i32, Vec<Cell>>,
 }
 
 impl Solver {
     fn new(input: Input) -> Self {
-        let mut temperature = vec![vec![0; input.L]; input.L];
-        for i in 0..input.N {
-            temperature[input.exit_cells[i].x][input.exit_cells[i].y] = i as i32 * 10;
-        }
+        let temperature = vec![vec![0; input.L]; input.L];
         let estimate = vec![0; input.N];
         Solver {
             input,
             temperature,
             estimate,
+            temperature_to_cell: HashMap::new(),
+        }
+    }
+
+    fn set_temperature(&mut self) {
+        let step = MAX_TEMPERATURE / (self.input.L as i32 * 2);
+        for i in 0..self.input.L {
+            for j in 0..self.input.L {
+                let temp = cmp::max(MAX_TEMPERATURE - i as i32 * step - j as i32 * step, 0);
+                self.temperature[i][j] = temp;
+
+                if self.temperature_to_cell.contains_key(&temp) {
+                    let v = self.temperature_to_cell.get_mut(&temp).unwrap();
+                    v.push(Cell { x: i, y: j });
+                } else {
+                    self.temperature_to_cell
+                        .insert(temp, vec![Cell { x: i, y: j }]);
+                }
+            }
         }
     }
 
@@ -67,10 +88,16 @@ impl Solver {
 
     fn estimate(&mut self, source: &mut LineSource<BufReader<Stdin>>) {
         for i in 0..self.input.N {
-            let measured = self.measure(i, 0, 0, source);
+            let mut sum = 0;
+            for _ in 0..5 {
+                let measured = self.measure(i, 0, 0, source);
+                sum += measured;
+            }
+            sum /= 5;
+
             let mut diff = 9999;
             for (j, cell) in self.input.exit_cells.iter().enumerate() {
-                let d = (self.temperature[cell.x][cell.y] - measured).abs();
+                let d = (self.temperature[cell.x][cell.y] - sum).abs();
                 if d < diff {
                     diff = d;
                     self.estimate[i] = j;
@@ -99,6 +126,7 @@ impl Solver {
     }
 
     fn solve(&mut self, source: &mut LineSource<BufReader<Stdin>>) {
+        self.set_temperature();
         self.output_temperature();
         self.estimate(source);
         self.output_final();
